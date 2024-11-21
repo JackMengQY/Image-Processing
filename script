@@ -1,0 +1,289 @@
+
+# Read in the data
+
+# Note: Change Filename once the data is finalized
+FileName <- "SelfieImageData.csv"
+Labs <- scan(file=FileName,what="xx",nlines=1,sep="|")
+DataAsChars <- matrix(scan(file=FileName,what="xx",sep="|",skip=1),byrow=T,ncol=length(Labs))
+colnames(DataAsChars) <- Labs
+dim(DataAsChars)
+# size in memory in MBs
+as.double(object.size(DataAsChars)/1024/1024)
+
+ImgData <- matrix(as.integer(DataAsChars[,-1]),nrow=nrow(DataAsChars))
+colnames(ImgData) <- Labs[-1]
+rownames(ImgData) <- DataAsChars[,1]
+# size in memory in MBs
+as.double(object.size(ImgData)/1024/1024)
+
+# Take a look
+ImgData[1:8,1:8]
+
+# Free up some memory just in case
+remove(DataAsChars)
+
+# Show each Image
+for(whImg in 1:nrow(ImgData)) {
+  cat(whImg,"\r")
+  Img <- matrix(ImgData[whImg,],byrow=T,ncol=sqrt(ncol(ImgData)))
+  Img <- apply(Img,2,rev)
+  par(pty="s",mfrow=c(1,1))
+  image(z=t(Img),col = grey.colors(255),useRaster=T)
+  title(rownames(ImgData)[whImg])
+  Sys.sleep(1)
+}
+
+
+# Calculate the average image across all rows (images)
+average_image <- colMeans(ImgData)
+
+# Convert the average image back to matrix form
+image_matrix <- matrix(average_image, byrow=TRUE, ncol=sqrt(ncol(ImgData)))
+
+# Flip the image matrix for correct orientation
+image_matrix <- apply(image_matrix, 2, rev)
+
+# Plot and save the average image
+png(filename="YourNetID-Q4-AveFace.png", width=600, height=600)
+par(pty="s", mfrow=c(1,1))
+image(z=t(image_matrix), col=grey.colors(255), useRaster=TRUE)
+title("Average Face")
+dev.off()
+
+# Display the average image in RStudio viewer
+image(z=t(image_matrix), col=grey.colors(255), useRaster=TRUE)
+title(": Average Face")
+
+# Center the data by subtracting the mean image
+ImgData_centered <- scale(ImgData, center=TRUE, scale=FALSE)
+
+# Perform SVD on the centered data
+svd_result <- svd(ImgData_centered)
+
+# The eigenvalues of the covariance matrix are (singular values squared) divided by (n - 1)
+eigenvalues <- (svd_result$d)^2 / (nrow(ImgData_centered) - 1)
+
+# Plot the scree plot and save it
+png(filename="ScreePlot.png", width=600, height=600)
+plot(eigenvalues, type="b", pch=19, xlab="Component Number", ylab="Eigenvalue", main="Scree Plot")
+dev.off()
+
+# Display the scree plot in RStudio viewer
+plot(eigenvalues, type="b", pch=19, xlab="Component Number", ylab="Eigenvalue", main="QMWENG25: Scree Plot")
+
+
+# Extract the largest eigenvalue
+largest_eigenvalue <- eigenvalues[1]
+
+# Print the largest eigenvalue with two digits after the decimal point
+cat(sprintf("The largest eigenvalue is: %.2f\n", largest_eigenvalue))
+
+
+
+# Compute the total variance
+total_variance <- sum(eigenvalues)
+# Compute the proportion of variance explained by each eigenvalue
+variance_explained <- eigenvalues / total_variance
+# Compute the cumulative variance explained
+cumulative_variance_explained <- cumsum(variance_explained)
+# Find the number of components needed to reach 85% variance explained
+threshold <- 0.85
+num_components <- which(cumulative_variance_explained >= threshold)[1]
+
+# Print the result
+cat(sprintf("Number of components needed to explain %.0f%% of variance: %d\n", threshold*100, num_components))
+
+
+
+# Center the data by subtracting the mean image
+ImgData_centered <- scale(ImgData, center=FALSE, scale=FALSE)
+
+# Compute the n x n covariance matrix (using the "trick" for images)
+C <- ImgData_centered %*% t(ImgData_centered)
+
+# Compute eigenvalues and eigenvectors of the n x n matrix
+eig_C <- eigen(C)
+
+# Extract eigenvalues and eigenvectors
+eigenvalues <- eig_C$values
+U <- eig_C$vectors  # n x n matrix
+
+# Select the first k eigenvalues and eigenvectors
+k <- 20
+eigenvalues_k <- eigenvalues[1:k]
+U_k <- U[, 1:k]  # n x k matrix
+
+# Compute the eigenvectors in the original space
+V_k <- t(ImgData_centered) %*% U_k %*% diag(1 / sqrt(eigenvalues_k))
+
+# Normalize the eigenvectors (optional but recommended)
+V_k <- apply(V_k, 2, function(x) x / sqrt(sum(x^2)))
+
+# Compute the scores (principal components)
+scores_k <- ImgData_centered %*% V_k  # n x k matrix
+
+# Reconstruct the images using the first k principal components
+Reconstructed_data <- scores_k %*% t(V_k)  # n x p matrix
+
+# Add back the mean image to each reconstructed image
+Reconstructed_data <- Reconstructed_data + matrix(colMeans(ImgData), nrow=nrow(ImgData), ncol=ncol(ImgData), byrow=TRUE)
+
+# Now, get the reconstructed image of your own face
+my_netid <- "####"  # Replace "YourNetID" with your actual NetID
+my_index <- which(rownames(ImgData) == my_netid)
+
+# Check if your NetID is found
+if(length(my_index) == 0) {
+  stop("You was not found in the dataset.")
+}
+
+# Extract your reconstructed image
+my_reconstructed_image <- Reconstructed_data[my_index, ]
+
+# Reshape the image back to matrix form
+image_matrix <- matrix(my_reconstructed_image, byrow=TRUE, ncol=sqrt(ncol(ImgData)))
+
+# Flip the image matrix for correct orientation
+image_matrix <- apply(image_matrix, 2, rev)
+
+# Plot and save the reconstructed image
+png(filename=paste0(my_netid, "Face20.png"), width=600, height=600)
+par(pty="s", mfrow=c(1,1))
+image(z=t(image_matrix), col=grey.colors(255), useRaster=TRUE)
+title("Reconstructed Face using 20 PCs")
+dev.off()
+
+# Display the reconstructed image in RStudio viewer
+image(z=t(image_matrix), col=grey.colors(255), useRaster=TRUE)
+title(paste(my_netid, ": My Face 20D"))
+
+
+
+# Ensure you have computed V_k in the previous steps
+# V_k is the matrix of eigenvectors in the original pixel space
+
+# Extract the 8th eigenvector (eigenface)
+eigenvector_8 <- V_k[, 8]  # Extract the 8th eigenvector
+
+# Map the eigenvector values to the range 0-255 for visualization
+# Normalize the values to range from 0 to 1
+min_val <- min(eigenvector_8)
+max_val <- max(eigenvector_8)
+eigenface_8_normalized <- (eigenvector_8 - min_val) / (max_val - min_val)
+
+# Scale to 0-255
+eigenface_8_scaled <- eigenface_8_normalized * 255
+
+# Reshape into image form
+image_size <- sqrt(ncol(ImgData))
+eigenface_matrix <- matrix(eigenface_8_scaled, byrow=TRUE, ncol=image_size)
+
+# Flip the image matrix for correct orientation
+eigenface_matrix <- apply(eigenface_matrix, 2, rev)
+
+# Plot and save the eigenface
+png(filename=paste0(my_netid, "-Q10-Eigenface8.png"), width=600, height=600)
+par(pty="s", mfrow=c(1,1))
+image(z=t(eigenface_matrix), col=grey.colors(256), useRaster=TRUE)
+title("Eigenface 8")
+dev.off()
+
+# Display the eigenface in RStudio viewer
+image(z=t(eigenface_matrix), col=grey.colors(256), useRaster=TRUE)
+title(paste(my_netid, ": Eigenface 8"))
+
+
+# Ensure you have computed V_k, the matrix of eigenvectors in the original pixel space
+# V_k should be of dimension (number of pixels) x 20
+
+# Assuming you have already loaded and preprocessed your image data as ImgData
+# and have computed V_k as per previous steps
+
+# Set image dimensions (assuming square images)
+image_size <- sqrt(ncol(ImgData))  # Should be 451 for 451 x 451 images
+
+# Loop over the first 20 eigenvectors to plot the eigenfaces
+for (i in 1:20) {
+  # Extract the i-th eigenvector
+  eigenvector_i <- V_k[, i]
+  
+  # Map the eigenvector values to the range 0-255 for visualization
+  min_val <- min(eigenvector_i)
+  max_val <- max(eigenvector_i)
+  eigenface_i_normalized <- (eigenvector_i - min_val) / (max_val - min_val)
+  
+  # Scale to 0-255
+  eigenface_i_scaled <- eigenface_i_normalized * 255
+  
+  # Reshape into image form
+  eigenface_matrix <- matrix(eigenface_i_scaled, byrow=TRUE, ncol=image_size)
+  
+  # Flip the image matrix for correct orientation
+  eigenface_matrix <- apply(eigenface_matrix, 2, rev)
+  
+  # Plot each eigenface
+  par(pty="s", mfrow=c(1,1))
+  image(z=t(eigenface_matrix), col=grey.colors(256), useRaster=TRUE)
+  title(paste("Eigenface", i))
+  
+  # Pause between plots to allow you to examine each eigenface
+  readline(prompt="Press [Enter] to see the next eigenface...")
+}
+
+
+ImgData_centered <- scale(ImgData, center=TRUE, scale=FALSE)
+
+# Since the number of images (n) is less than the number of pixels (p)
+C <- ImgData_centered %*% t(ImgData_centered)
+
+eig_C <- eigen(C)
+
+# Extract the eigenvalues and eigenvectors
+eigenvalues <- eig_C$values
+U <- eig_C$vectors  # n x n matrix of eigenvectors
+
+k <- 20
+eigenvalues_k <- eigenvalues[1:k]
+U_k <- U[, 1:k]  # n x k matrix
+
+V_k <- t(ImgData_centered) %*% U_k %*% diag(1 / sqrt(eigenvalues_k))
+
+# Normalize the eigenvectors (columns of V_k)
+V_k <- apply(V_k, 2, function(x) x / sqrt(sum(x^2)))
+
+scores_k <- ImgData_centered %*% V_k  # n x k matrix
+
+Reconstructed_data <- scores_k %*% t(V_k)  # n x p matrix
+
+# Add back the mean face to get the reconstructed images
+Reconstructed_data <- Reconstructed_data + matrix(colMeans(ImgData), nrow=nrow(ImgData), ncol=ncol(ImgData), byrow=TRUE)
+
+my_netid <- "#####"
+my_index <- which(rownames(ImgData) == my_netid)
+
+# Check if you is found
+if(length(my_index) == 0) {
+  stop("You was not found in the dataset.")
+}
+
+# Get your reconstructed face
+my_reconstructed_face <- Reconstructed_data[my_index, ]
+
+image_size <- sqrt(ncol(ImgData))
+image_matrix <- matrix(my_reconstructed_face, byrow=TRUE, ncol=image_size)
+
+# Flip the image matrix for correct orientation
+image_matrix <- apply(image_matrix, 2, rev)
+
+png(filename=paste0(my_netid, "-Q8-MyFace20.png"), width=600, height=600)
+par(pty="s", mfrow=c(1,1))
+image(z=t(image_matrix), col=grey.colors(255), useRaster=TRUE)
+title("Reconstructed Face using 20 Principal Components")
+dev.off()
+
+# Display the reconstructed image in RStudio viewer
+image(z=t(image_matrix), col=grey.colors(255), useRaster=TRUE)
+title(paste(my_netid, ": My Face 20D"))
+
+
+
